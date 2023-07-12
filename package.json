@@ -1,0 +1,22 @@
+{
+  "name": "demo-de-npm",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "inquirer": "^9.1.5",
+    "inquirer-date-prompt": "^3.0.0",
+    "moment": "^2.29.4",
+    "mysql": "^2.18.1"
+  },
+  "devDependencies": {
+    "@types/mysql": "^2.15.21",
+    "nodemon": "^2.0.22"
+  }
+}

@@ -1,10 +1,15 @@
-import inquirer from "inquirer";
-import fs from "fs";
-import { promptNewGasto } from "./gastosPrompts.js";
 import mysql from "mysql";
+import express from "express";
+import bodyParser from "body-parser";
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+
+//////////////////CONNECTION/////////////////////////
+const app = express();
+const port = 3000;
 
 const DATABASE_URL =
-  'mysql://np0cwupzw64688krzuqp:pscale_pw_y6DTjNi3F6Bq0wE0QLn8KOpPaciCZqUkRTWc64PxlQg@aws.connect.psdb.cloud/2317?ssl={"rejectUnauthorized":true}';
+  'mysql://spl75bxzzfju24t3n56m:pscale_pw_C1qyPM30cO0NXhZnU4XPu0DrTs2HD3sSjHWv4a5v8B9@aws.connect.psdb.cloud/2317?ssl={"rejectUnauthorized":true}';
 
 const connection = mysql.createConnection(DATABASE_URL);
 
@@ -15,115 +20,74 @@ connection.connect((error) => {
   }
 
   console.log("Connected to database!");
-
-  main();
 });
 
-// connection.query("SELECT * FROM gastos;", function (error, results, fields) {
-//   if (error) throw error;
-//   console.log("The solution is: ", results[0].solution);
-// });
+// Parse application/orm-urlencodedx-www-f
+app.use(bodyParser.urlencoded({ extended: true }));
 
-const main = async () => {
-  let go = true;
-  while (go) {
-    const action = await inquirer.prompt([
-      {
-        type: "list",
-        name: "chose",
-        message: "Actions:",
-        choices: [
-          { value: 1, name: "Get all Spends" },
-          { value: 2, name: "Create new Spends" },
-          { value: 3, name: "Total spends" },
-          { value: 4, name: "Total spends by category" },
-          { value: 5, name: "Migrate Data" },
-          { value: 99, name: "EXIT" },
-        ],
-      },
-    ]);
-    console.log(action);
-    switch (action.chose) {
-      case 1:
-        await getAllGastos();
-        break;
-      case 2:
-        await createNewGastos();
-        break;
-      case 3:
-        await totalSpends();
-        break;
-      case 4:
-        await totalSpendsByCategory();
-        break;
-      case 5:
-        await migrateData();
-        break;
-      case 99:
-        go = false;
-        break; // Añade un break para salir del switch
-      default:
-        go = false;
-        break; // Añade un break para salir del switch
-    }
-  }
-  console.log("bye");
-
-  // Cierra la conexión a la base de datos al finalizar
-  connection.end();
-};
-
-async function createNewGastos() {
+app.post("/spends", (req, res) => {
   console.log("Adding new spend:");
-  const newGastosData = await promptNewGasto();
+
+  const monto = req.body.monto;
+  const descripcion = req.body.descripcion;
+  const fecha = req.body.fecha;
+  const categoria = req.body.categoria;
+
   connection.query(
     "INSERT INTO gastos (monto, descripcion, fecha, categoria) VALUES (?, ?, ?, ?)",
-    [
-      newGastosData.monto,
-      newGastosData.descripcion,
-      newGastosData.fecha,
-      newGastosData.categoria,
-    ],
+    [monto, descripcion, fecha, categoria],
     (error, results) => {
       if (error) {
         console.error("Error creating new spend:", error);
+        res.status(500).send("Error creating new spend");
       } else {
-        console.log("New spend created successfully!");
+        res.send("New spend created successfully!");
       }
     }
   );
-}
+});
 
-async function getAllGastos() {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+app.get("/crear-gasto", (req, res) => {
+  res.sendFile(__dirname + "/index.html");
+});
+
+app.get("/spends", (req, res) => {
   console.log("Getting spends: ");
   connection.query("SELECT * FROM gastos", (error, results) => {
     if (error) {
       console.error("Error getting spends:", error);
+      res.status(500).send("Error getting spends");
     } else {
-      console.log(results);
+      res.json(results);
     }
   });
-}
-async function totalSpends() {
+});
+
+app.get("/spends/total", (req, res) => {
   console.log("Calculating total spends: ");
   connection.query("SELECT monto FROM gastos", (error, results) => {
     if (error) {
       console.error("Error getting spends:", error);
+      res.status(500).send("Error getting spends");
     } else {
       const total = results.reduce((acc, gasto) => {
         const monto = parseFloat(gasto.monto);
         return isNaN(monto) ? acc : acc + monto;
       }, 0);
-      console.log(`El total de gastos es: $${total}`);
+      res.send(`El total de gastos es: $${total}`);
     }
   });
-}
+});
 
-async function totalSpendsByCategory() {
+app.get("/spends/total-by-category", (req, res) => {
   console.log("Calculating total spends for category:");
   connection.query("SELECT categoria, monto FROM gastos", (error, results) => {
     if (error) {
       console.error("Error getting spends:", error);
+      res.status(500).send("Error getting spends");
     } else {
       const totalsByCategory = {};
       results.forEach((gasto) => {
@@ -138,50 +102,27 @@ async function totalSpendsByCategory() {
         }
       });
 
-      console.log("Totales por categoría:");
-      for (const categoria in totalsByCategory) {
-        console.log(`${categoria}: $${totalsByCategory[categoria]}`);
-      }
+      res.json(totalsByCategory);
     }
   });
-}
+});
 
-async function migrateData() {
-  try {
-    console.log("Migrating data...");
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send("Something broke!");
+});
 
-    // Leer el archivo JSON
-    const jsonData = fs.readFileSync("gastos.json", "utf-8");
+app.listen(port, () => {
+  console.log(`App listening at http://localhost:${port}`);
+});
 
-    // Parsear los datos JSON
-    const data = JSON.parse(jsonData);
-
-    // Iterar sobre los datos y realizar la inserción en la base de datos
-    for (const item of data) {
-      await insertData(item);
+process.on("SIGINT", () => {
+  connection.end((err) => {
+    if (err) {
+      console.error("Error closing database connection:", err);
+    } else {
+      console.log("Database connection closed!");
     }
-
-    console.log("Data migration completed!");
-  } catch (error) {
-    console.error("Error migrating data:", error);
-  }
-}
-async function insertData(data) {
-  if (!data.monto || isNaN(parseFloat(data.monto))) {
-    // Si el campo "monto" es vacío o no es un número válido, rechazar la promesa
-  } else {
-    return new Promise((resolve, reject) => {
-      connection.query(
-        "INSERT INTO gastos (monto, descripcion, fecha, categoria) VALUES (?, ?, ?, ?)",
-        [data.monto, data.descripcion, data.fecha, data.categoria],
-        (error, results) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
-        }
-      );
-    });
-  }
-}
+    process.exit();
+  });
+});
